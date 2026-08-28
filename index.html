@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Smart Popcorn Dashboard</title>
+    <!-- Chart.js and MQTT.js CDNs -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #f4f7f6; margin: 0; padding: 20px; color: #333; }
+        .container { max-width: 900px; margin: auto; background: white; padding: 20px; border-radius: 12px; box-shadow: 0 4px 10px rgba(0,0,0,0.1); }
+        h1 { text-align: center; color: #2c3e50; }
+        .status-bar { display: flex; justify-content: space-between; background: #ecf0f1; padding: 15px; border-radius: 8px; margin-bottom: 20px; font-weight: bold; }
+        .chart-container { position: relative; height: 400px; width: 100%; margin-bottom: 20px; }
+        .controls { display: flex; justify-content: space-around; }
+        button { padding: 15px 30px; font-size: 16px; font-weight: bold; border: none; border-radius: 8px; cursor: pointer; color: white; transition: 0.3s; }
+        #btn-learn { background-color: #f39c12; }
+        #btn-play { background-color: #27ae60; }
+        #btn-stop { background-color: #e74c3c; }
+        button:hover { opacity: 0.8; }
+        .badge { padding: 5px 10px; border-radius: 5px; color: white; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h1>🍿 Smart Popcorn Dashboard</h1>
+    
+    <div class="status-bar">
+        <div>System State: <span id="sys-state" class="badge" style="background: #95a5a6;">IDLE</span></div>
+        <div>Chamber: <span id="sys-chamber">--</span> °C</div>
+        <div>Exhaust: <span id="sys-exhaust">--</span> °C</div>
+    </div>
+
+    <div class="chart-container">
+        <canvas id="thermalChart"></canvas>
+    </div>
+
+    <div class="controls">
+        <button id="btn-learn" onclick="sendCommand('LEARN')">Start Learn Mode</button>
+        <button id="btn-play" onclick="sendCommand('PLAY')">Start Smart Playback</button>
+        <button id="btn-stop" onclick="sendCommand('STOP')">Emergency Stop / Finish</button>
+    </div>
+</div>
+
+<script>
+    // --- Chart.js Configuration ---
+    const ctx = document.getElementById('thermalChart').getContext('2d');
+    const thermalChart = new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: [],
+            datasets: [
+                { label: 'Chamber Temp (°C)', borderColor: '#e74c3c', backgroundColor: 'rgba(231, 76, 60, 0.1)', data: [], tension: 0.3, fill: true },
+                { label: 'Exhaust Temp (°C)', borderColor: '#3498db', backgroundColor: 'transparent', data: [], tension: 0.3, borderDash: [5, 5] }
+            ]
+        },
+        options: { responsive: true, maintainAspectRatio: false, scales: { y: { beginAtZero: true, max: 220 } } }
+    });
+
+    // --- MQTT Connection over WebSockets ---
+    // Using the secure wss port for broker.emqx.io
+    const client = mqtt.connect('wss://broker.emqx.io:8084/mqtt');
+
+    client.on('connect', function () {
+        console.log('Connected to MQTT Broker!');
+        client.subscribe('popcorn/telemetry');
+    });
+
+    client.on('message', function (topic, message) {
+        if (topic === 'popcorn/telemetry') {
+            const data = JSON.parse(message.toString());
+            const now = new Date().toLocaleTimeString();
+
+            // Update UI Text
+            document.getElementById('sys-chamber').innerText = data.chamber.toFixed(1);
+            document.getElementById('sys-exhaust').innerText = data.exhaust.toFixed(1);
+            
+            const stateBadge = document.getElementById('sys-state');
+            const states = ["IDLE", "LEARNING", "SMART PLAY", "DONE"];
+            const colors = ["#95a5a6", "#f39c12", "#27ae60", "#34495e"];
+            stateBadge.innerText = states[data.state];
+            stateBadge.style.background = colors[data.state];
+
+            // Update Chart Data
+            thermalChart.data.labels.push(now);
+            thermalChart.data.datasets[0].data.push(data.chamber);
+            thermalChart.data.datasets[1].data.push(data.exhaust);
+
+            // Keep the chart from getting infinitely wide (show last 60 points)
+            if (thermalChart.data.labels.length > 60) {
+                thermalChart.data.labels.shift();
+                thermalChart.data.datasets[0].data.shift();
+                thermalChart.data.datasets[1].data.shift();
+            }
+            thermalChart.update();
+        }
+    });
+
+    // --- Command Publisher ---
+    function sendCommand(cmd) {
+        client.publish('popcorn/command', cmd);
+        console.log("Sent command: " + cmd);
+    }
+</script>
+
+</body>
+</html>
