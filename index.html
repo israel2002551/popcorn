@@ -738,18 +738,15 @@
 
                 // Simulate realistic thermal dynamics
                 if (simState === 1 || simState === 2) {
+                    simRelay = 1; // Continuously ON throughout learning and smart playback
                     if (simTemp < target) {
-                        simRelay = 1;
-                        // Thermal climb
                         simTemp += 2.5 + Math.random() * 1.0;
                         if (simTemp > target) simTemp = target;
                     } else {
-                        // Stabilized at target temperature with PID micro-adjustments
-                        simRelay = (simStep % 3 === 0) ? 1 : 0;
                         simTemp = target + (Math.random() - 0.5) * 1.5;
                     }
                 } else {
-                    simRelay = 0;
+                    simRelay = 0; // OFF in IDLE and DONE
                     if (simTemp > 25.0) simTemp -= 1.5;
                 }
 
