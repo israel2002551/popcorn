@@ -3,105 +3,781 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Smart Popcorn Dashboard</title>
+    <title>Smart Popcorn Dashboard - IoT Temperature Monitor</title>
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
     <!-- Chart.js and MQTT.js CDNs -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
     <style>
-        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #f4f7f6; margin: 0; padding: 20px; color: #333; }
-        .container { max-width: 900px; margin: auto; background: white; padding: 20px; border-radius: 12px; box-shadow: 0 4px 10px rgba(0,0,0,0.1); }
-        h1 { text-align: center; color: #2c3e50; }
-        .status-bar { display: flex; justify-content: space-between; background: #ecf0f1; padding: 15px; border-radius: 8px; margin-bottom: 20px; font-weight: bold; }
-        .chart-container { position: relative; height: 400px; width: 100%; margin-bottom: 20px; }
-        .controls { display: flex; justify-content: space-around; }
-        button { padding: 15px 30px; font-size: 16px; font-weight: bold; border: none; border-radius: 8px; cursor: pointer; color: white; transition: 0.3s; }
-        #btn-learn { background-color: #f39c12; }
-        #btn-play { background-color: #27ae60; }
-        #btn-stop { background-color: #e74c3c; }
-        button:hover { opacity: 0.8; }
-        .badge { padding: 5px 10px; border-radius: 5px; color: white; }
+        :root {
+            --bg-base: #0f172a;
+            --bg-card: #1e293b;
+            --bg-card-hover: #334155;
+            --text-main: #f8fafc;
+            --text-muted: #94a3b8;
+            --primary: #f59e0b;
+            --primary-hover: #d97706;
+            --danger: #ef4444;
+            --danger-hover: #dc2626;
+            --success: #10b981;
+            --success-hover: #059669;
+            --blue: #38bdf8;
+            --border: rgba(255, 255, 255, 0.08);
+            --shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.5), 0 8px 10px -6px rgba(0, 0, 0, 0.5);
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+            background-color: var(--bg-base);
+            color: var(--text-main);
+            min-height: 100vh;
+            padding: 24px 16px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        .container {
+            width: 100%;
+            max-width: 1100px;
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+
+        /* Header */
+        header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 16px;
+            padding-bottom: 8px;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .title-group h1 {
+            font-size: 26px;
+            font-weight: 800;
+            letter-spacing: -0.5px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            background: linear-gradient(135deg, #fbbf24 0%, #f59e0b 50%, #f97316 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .title-group p {
+            color: var(--text-muted);
+            font-size: 14px;
+            margin-top: 4px;
+        }
+
+        .connection-indicator {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 16px;
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 9999px;
+            font-size: 13px;
+            font-weight: 600;
+        }
+
+        .status-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background-color: #e2e8f0;
+            transition: all 0.3s ease;
+        }
+
+        .status-dot.connected {
+            background-color: #10b981;
+            box-shadow: 0 0 12px #10b981;
+        }
+
+        .status-dot.connecting {
+            background-color: #f59e0b;
+            box-shadow: 0 0 12px #f59e0b;
+            animation: pulse 1.5s infinite;
+        }
+
+        .status-dot.disconnected {
+            background-color: #ef4444;
+            box-shadow: 0 0 12px #ef4444;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; transform: scale(1); }
+            50% { opacity: 0.4; transform: scale(0.85); }
+        }
+
+        /* Metric Grid */
+        .metrics-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+            gap: 16px;
+        }
+
+        .metric-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 14px;
+            padding: 18px 20px;
+            box-shadow: var(--shadow);
+            transition: transform 0.2s, border-color 0.2s;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .metric-card:hover {
+            transform: translateY(-2px);
+            border-color: rgba(255, 255, 255, 0.15);
+        }
+
+        .metric-label {
+            font-size: 12px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            color: var(--text-muted);
+            margin-bottom: 8px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .metric-value {
+            font-size: 32px;
+            font-weight: 800;
+            font-family: 'JetBrains Mono', monospace;
+            color: #fff;
+            display: flex;
+            align-items: baseline;
+            gap: 4px;
+        }
+
+        .metric-unit {
+            font-size: 16px;
+            font-weight: 500;
+            color: var(--text-muted);
+        }
+
+        .metric-sub {
+            font-size: 12px;
+            color: var(--text-muted);
+            margin-top: 6px;
+        }
+
+        .badge {
+            display: inline-block;
+            padding: 4px 10px;
+            border-radius: 6px;
+            font-size: 12px;
+            font-weight: 700;
+            letter-spacing: 0.5px;
+            text-transform: uppercase;
+        }
+
+        /* Chart Card */
+        .chart-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            padding: 20px;
+            box-shadow: var(--shadow);
+        }
+
+        .chart-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 16px;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+
+        .chart-title {
+            font-size: 16px;
+            font-weight: 700;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .chart-actions {
+            display: flex;
+            gap: 8px;
+            align-items: center;
+        }
+
+        .btn-small {
+            padding: 6px 12px;
+            font-size: 12px;
+            font-weight: 600;
+            border-radius: 6px;
+            border: 1px solid var(--border);
+            background: rgba(255, 255, 255, 0.05);
+            color: var(--text-main);
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .btn-small:hover {
+            background: rgba(255, 255, 255, 0.12);
+        }
+
+        .chart-container {
+            position: relative;
+            height: 380px;
+            width: 100%;
+        }
+
+        /* Controls Section */
+        .controls-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            padding: 20px;
+            box-shadow: var(--shadow);
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+        }
+
+        .controls-title {
+            font-size: 15px;
+            font-weight: 700;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .button-group {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            gap: 14px;
+        }
+
+        .btn-ctrl {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+            padding: 16px 20px;
+            font-size: 15px;
+            font-weight: 700;
+            border: none;
+            border-radius: 10px;
+            cursor: pointer;
+            color: white;
+            transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
+        }
+
+        .btn-ctrl:hover {
+            transform: translateY(-2px);
+            filter: brightness(1.1);
+        }
+
+        .btn-ctrl:active {
+            transform: translateY(0);
+        }
+
+        #btn-learn {
+            background: linear-gradient(135deg, #f59e0b, #d97706);
+        }
+
+        #btn-play {
+            background: linear-gradient(135deg, #10b981, #059669);
+        }
+
+        #btn-stop {
+            background: linear-gradient(135deg, #ef4444, #dc2626);
+        }
+
+        #btn-sim {
+            background: linear-gradient(135deg, #6366f1, #4f46e5);
+        }
+
+        /* Activity Log */
+        .log-section {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 16px;
+        }
+
+        .log-header {
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--text-muted);
+            margin-bottom: 8px;
+            display: flex;
+            justify-content: space-between;
+        }
+
+        .log-box {
+            background: #090d16;
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            border-radius: 8px;
+            padding: 12px;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 12px;
+            height: 110px;
+            overflow-y: auto;
+            color: #cbd5e1;
+            display: flex;
+            flex-direction: column-reverse;
+            gap: 4px;
+        }
+
+        .log-entry {
+            display: flex;
+            gap: 8px;
+        }
+
+        .log-time {
+            color: #64748b;
+        }
+
+        .log-msg-rx {
+            color: #38bdf8;
+        }
+
+        .log-msg-tx {
+            color: #fbbf24;
+        }
+
+        .log-msg-sys {
+            color: #a855f7;
+        }
     </style>
 </head>
 <body>
 
 <div class="container">
-    <h1>🍿 Smart Popcorn Dashboard</h1>
-    
-    <div class="status-bar">
-        <div>System State: <span id="sys-state" class="badge" style="background: #95a5a6;">IDLE</span></div>
-        <div>Chamber: <span id="sys-chamber">--</span> °C</div>
-        <div>Exhaust: <span id="sys-exhaust">--</span> °C</div>
+    <!-- Header -->
+    <header>
+        <div class="title-group">
+            <h1>🍿 Smart Popcorn Monitor</h1>
+            <p>ESP32 IoT Closed-Loop Thermal Controller & Telemetry</p>
+        </div>
+        <div class="connection-indicator">
+            <div id="conn-dot" class="status-dot connecting"></div>
+            <span id="conn-text">Connecting to MQTT...</span>
+        </div>
+    </header>
+
+    <!-- Metrics Cards -->
+    <div class="metrics-grid">
+        <div class="metric-card">
+            <div class="metric-label">Current Temperature 🌡️</div>
+            <div class="metric-value">
+                <span id="sys-chamber" style="color: #f87171;">--</span>
+                <span class="metric-unit">°C</span>
+            </div>
+            <div class="metric-sub" id="chamber-sub">DS18B20 Digital Sensor</div>
+        </div>
+
+        <div class="metric-card">
+            <div class="metric-label">Target Setpoint 🎯</div>
+            <div class="metric-value">
+                <span id="sys-setpoint" style="color: #fbbf24;">--</span>
+                <span class="metric-unit">°C</span>
+            </div>
+            <div class="metric-sub" id="setpoint-sub">Profile Target</div>
+        </div>
+
+        <div class="metric-card">
+            <div class="metric-label">Heater / Relay State ⚡</div>
+            <div style="display: flex; align-items: center; gap: 10px; margin-top: 4px;">
+                <span id="sys-relay" class="badge" style="background: #334155; font-size: 14px; padding: 6px 12px;">HEATER: OFF</span>
+            </div>
+            <div class="metric-sub">Time-Proportional Window</div>
+        </div>
+
+        <div class="metric-card">
+            <div class="metric-label">Machine State 🚀</div>
+            <div style="display: flex; align-items: center; gap: 10px; margin-top: 4px;">
+                <span id="sys-state" class="badge" style="background: #475569; font-size: 14px; padding: 6px 12px;">IDLE</span>
+            </div>
+            <div class="metric-sub" id="packet-count">Packets Received: 0</div>
+        </div>
     </div>
 
-    <div class="chart-container">
-        <canvas id="thermalChart"></canvas>
+    <!-- Live Graph Card -->
+    <div class="chart-card">
+        <div class="chart-header">
+            <div class="chart-title">
+                📈 Live Thermal Dynamics
+            </div>
+            <div class="chart-actions">
+                <button class="btn-small" onclick="clearChart()">Clear Graph</button>
+                <button class="btn-small" id="btn-toggle-sim" onclick="toggleSimulation()">Start Simulation Mode</button>
+            </div>
+        </div>
+        <div class="chart-container">
+            <canvas id="thermalChart"></canvas>
+        </div>
     </div>
 
-    <div class="controls">
-        <button id="btn-learn" onclick="sendCommand('LEARN')">Start Learn Mode</button>
-        <button id="btn-play" onclick="sendCommand('PLAY')">Start Smart Playback</button>
-        <button id="btn-stop" onclick="sendCommand('STOP')">Emergency Stop / Finish</button>
+    <!-- Machine Control Buttons -->
+    <div class="controls-card">
+        <div class="controls-title">Machine Commands</div>
+        <div class="button-group">
+            <button id="btn-learn" class="btn-ctrl" onclick="sendCommand('LEARN')">
+                <span>🎓</span> Start Learn Mode
+            </button>
+            <button id="btn-play" class="btn-ctrl" onclick="sendCommand('PLAY')">
+                <span>▶️</span> Start Smart Playback
+            </button>
+            <button id="btn-stop" class="btn-ctrl" onclick="sendCommand('STOP')">
+                <span>🛑</span> Stop / Finish
+            </button>
+        </div>
+    </div>
+
+    <!-- Activity Log -->
+    <div class="log-section">
+        <div class="log-header">
+            <span>Live MQTT Stream Log</span>
+            <span id="broker-label" style="font-family: monospace;">broker.emqx.io:8084</span>
+        </div>
+        <div id="logBox" class="log-box">
+            <div class="log-entry"><span class="log-time">[Init]</span><span class="log-msg-sys">Dashboard ready. Initializing MQTT client...</span></div>
+        </div>
     </div>
 </div>
 
 <script>
+    // --- Logging Helper ---
+    const logBox = document.getElementById('logBox');
+    function addLog(msg, type = 'sys') {
+        const time = new Date().toLocaleTimeString();
+        const entry = document.createElement('div');
+        entry.className = 'log-entry';
+        let typeClass = 'log-msg-sys';
+        let prefix = 'SYS';
+        if (type === 'rx') { typeClass = 'log-msg-rx'; prefix = 'RX 📥'; }
+        if (type === 'tx') { typeClass = 'log-msg-tx'; prefix = 'TX 📤'; }
+        if (type === 'err') { typeClass = 'log-msg-tx'; prefix = 'ERR ⚠️'; }
+
+        entry.innerHTML = `<span class="log-time">[${time}]</span><span class="${typeClass}">[${prefix}] ${msg}</span>`;
+        logBox.prepend(entry);
+        while (logBox.children.length > 50) {
+            logBox.removeChild(logBox.lastChild);
+        }
+    }
+
     // --- Chart.js Configuration ---
     const ctx = document.getElementById('thermalChart').getContext('2d');
+    
+    // Gradient backgrounds for rich visual aesthetic
+    const chamberGradient = ctx.createLinearGradient(0, 0, 0, 380);
+    chamberGradient.addColorStop(0, 'rgba(239, 68, 68, 0.40)');
+    chamberGradient.addColorStop(1, 'rgba(239, 68, 68, 0.0)');
+
     const thermalChart = new Chart(ctx, {
         type: 'line',
         data: {
             labels: [],
             datasets: [
-                { label: 'Chamber Temp (°C)', borderColor: '#e74c3c', backgroundColor: 'rgba(231, 76, 60, 0.1)', data: [], tension: 0.3, fill: true },
-                { label: 'Exhaust Temp (°C)', borderColor: '#3498db', backgroundColor: 'transparent', data: [], tension: 0.3, borderDash: [5, 5] }
+                {
+                    label: 'Measured Temperature (°C)',
+                    borderColor: '#f87171',
+                    backgroundColor: chamberGradient,
+                    data: [],
+                    tension: 0.35,
+                    fill: true,
+                    borderWidth: 2.5,
+                    pointRadius: 2,
+                    pointHoverRadius: 6
+                },
+                {
+                    label: 'Target Setpoint (°C)',
+                    borderColor: '#fbbf24',
+                    backgroundColor: 'transparent',
+                    data: [],
+                    tension: 0.1,
+                    fill: false,
+                    borderWidth: 2,
+                    borderDash: [4, 4],
+                    pointRadius: 0
+                }
             ]
         },
-        options: { responsive: true, maintainAspectRatio: false, scales: { y: { beginAtZero: true, max: 220 } } }
-    });
-
-    // --- MQTT Connection over WebSockets ---
-    // Using the secure wss port for broker.emqx.io
-    const client = mqtt.connect('wss://broker.emqx.io:8084/mqtt');
-
-    client.on('connect', function () {
-        console.log('Connected to MQTT Broker!');
-        client.subscribe('popcorn/telemetry');
-    });
-
-    client.on('message', function (topic, message) {
-        if (topic === 'popcorn/telemetry') {
-            const data = JSON.parse(message.toString());
-            const now = new Date().toLocaleTimeString();
-
-            // Update UI Text
-            document.getElementById('sys-chamber').innerText = data.chamber.toFixed(1);
-            document.getElementById('sys-exhaust').innerText = data.exhaust.toFixed(1);
-            
-            const stateBadge = document.getElementById('sys-state');
-            const states = ["IDLE", "LEARNING", "SMART PLAY", "DONE"];
-            const colors = ["#95a5a6", "#f39c12", "#27ae60", "#34495e"];
-            stateBadge.innerText = states[data.state];
-            stateBadge.style.background = colors[data.state];
-
-            // Update Chart Data
-            thermalChart.data.labels.push(now);
-            thermalChart.data.datasets[0].data.push(data.chamber);
-            thermalChart.data.datasets[1].data.push(data.exhaust);
-
-            // Keep the chart from getting infinitely wide (show last 60 points)
-            if (thermalChart.data.labels.length > 60) {
-                thermalChart.data.labels.shift();
-                thermalChart.data.datasets[0].data.shift();
-                thermalChart.data.datasets[1].data.shift();
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            animation: false, // Smooth rendering for real-time streams
+            interaction: {
+                mode: 'index',
+                intersect: false
+            },
+            plugins: {
+                legend: {
+                    position: 'top',
+                    labels: {
+                        color: '#94a3b8',
+                        font: { family: 'Plus Jakarta Sans', size: 12, weight: 600 },
+                        usePointStyle: true,
+                        boxWidth: 8
+                    }
+                },
+                tooltip: {
+                    backgroundColor: '#1e293b',
+                    titleColor: '#f8fafc',
+                    bodyColor: '#cbd5e1',
+                    borderColor: 'rgba(255, 255, 255, 0.15)',
+                    borderWidth: 1,
+                    padding: 10,
+                    bodyFont: { family: 'JetBrains Mono' }
+                }
+            },
+            scales: {
+                x: {
+                    grid: { color: 'rgba(255, 255, 255, 0.05)' },
+                    ticks: {
+                        color: '#64748b',
+                        maxTicksLimit: 10,
+                        font: { family: 'JetBrains Mono', size: 11 }
+                    }
+                },
+                y: {
+                    suggestedMin: 20,
+                    suggestedMax: 130,
+                    grid: { color: 'rgba(255, 255, 255, 0.05)' },
+                    ticks: {
+                        color: '#94a3b8',
+                        callback: function(val) { return val + ' °C'; },
+                        font: { family: 'JetBrains Mono', size: 11 }
+                    }
+                }
             }
-            thermalChart.update();
         }
     });
 
+    function clearChart() {
+        thermalChart.data.labels = [];
+        thermalChart.data.datasets.forEach(dataset => dataset.data = []);
+        thermalChart.update();
+        addLog('Chart data cleared.');
+    }
+
+    // --- State & Connection Management ---
+    const connDot = document.getElementById('conn-dot');
+    const connText = document.getElementById('conn-text');
+    let packetCount = 0;
+
+    function setConnectionStatus(status, text) {
+        connDot.className = 'status-dot ' + status;
+        connText.innerText = text;
+    }
+
+    // --- MQTT Connection ---
+    const clientId = 'web_dashboard_' + Math.random().toString(16).substr(2, 8);
+    const brokerUrl = 'wss://broker.emqx.io:8084/mqtt';
+    const topicTelemetry = 'popcorn/telemetry';
+    const topicCommand = 'popcorn/command';
+
+    addLog(`Connecting to ${brokerUrl} (ID: ${clientId})...`);
+    
+    let client = null;
+    try {
+        client = mqtt.connect(brokerUrl, {
+            clientId: clientId,
+            clean: true,
+            connectTimeout: 5000,
+            reconnectPeriod: 3000
+        });
+
+        client.on('connect', function () {
+            setConnectionStatus('connected', 'Connected to MQTT Broker');
+            addLog('Connected to MQTT Broker! Subscribing to ' + topicTelemetry);
+            client.subscribe(topicTelemetry, function (err) {
+                if (!err) {
+                    addLog('Subscribed to topic: ' + topicTelemetry);
+                } else {
+                    addLog('Subscription error: ' + err.message, 'err');
+                }
+            });
+        });
+
+        client.on('reconnect', function () {
+            setConnectionStatus('connecting', 'Reconnecting...');
+            addLog('Reconnecting to MQTT broker...');
+        });
+
+        client.on('offline', function () {
+            setConnectionStatus('disconnected', 'MQTT Offline');
+            addLog('MQTT connection went offline.', 'err');
+        });
+
+        client.on('error', function (err) {
+            setConnectionStatus('disconnected', 'MQTT Error');
+            addLog('MQTT Error: ' + err.message, 'err');
+        });
+
+        client.on('message', function (topic, message) {
+            if (topic === topicTelemetry) {
+                try {
+                    const data = JSON.parse(message.toString());
+                    handleTelemetry(data);
+                    addLog(`Temp: ${data.chamber}°C | State: ${data.state}`, 'rx');
+                } catch (e) {
+                    addLog('Failed to parse telemetry: ' + message.toString(), 'err');
+                }
+            }
+        });
+    } catch (err) {
+        setConnectionStatus('disconnected', 'Init Failed');
+        addLog('MQTT Initialization error: ' + err.toString(), 'err');
+    }
+
+    // --- Telemetry Processor ---
+    function handleTelemetry(data) {
+        packetCount++;
+        document.getElementById('packet-count').innerText = `Packets: ${packetCount}`;
+
+        const chamber = typeof data.chamber === 'number' ? data.chamber : parseFloat(data.chamber) || 0;
+        const state = typeof data.state === 'number' ? data.state : 0;
+        const setpoint = typeof data.setpoint === 'number' ? data.setpoint : (state === 1 ? 105 : 0);
+        const relay = data.relay === 1 || data.relay === true;
+
+        // Update UI Cards
+        document.getElementById('sys-chamber').innerText = chamber.toFixed(1);
+        document.getElementById('sys-setpoint').innerText = setpoint > 0 ? setpoint.toFixed(1) : '--';
+
+        // State Badge
+        const stateBadge = document.getElementById('sys-state');
+        const states = ["IDLE", "LEARNING", "SMART PLAY", "DONE"];
+        const colors = ["#475569", "#f59e0b", "#10b981", "#6366f1"];
+        stateBadge.innerText = states[state] || "UNKNOWN";
+        stateBadge.style.background = colors[state] || "#475569";
+
+        // Relay Badge
+        const relayBadge = document.getElementById('sys-relay');
+        if (relay) {
+            relayBadge.innerText = "HEATER: ON";
+            relayBadge.style.background = "#ef4444";
+        } else {
+            relayBadge.innerText = "HEATER: OFF";
+            relayBadge.style.background = "#334155";
+        }
+
+        // Update Chart
+        const timestamp = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+        thermalChart.data.labels.push(timestamp);
+        thermalChart.data.datasets[0].data.push(chamber);
+        thermalChart.data.datasets[1].data.push(setpoint > 0 ? setpoint : null);
+
+        // Keep last 60 data points visible
+        if (thermalChart.data.labels.length > 60) {
+            thermalChart.data.labels.shift();
+            thermalChart.data.datasets[0].data.shift();
+            thermalChart.data.datasets[1].data.shift();
+        }
+
+        thermalChart.update('none'); // Update smoothly without lag
+    }
+
     // --- Command Publisher ---
     function sendCommand(cmd) {
-        client.publish('popcorn/command', cmd);
-        console.log("Sent command: " + cmd);
+        if (client && client.connected) {
+            client.publish(topicCommand, cmd);
+            addLog(`Command [${cmd}] published to ${topicCommand}`, 'tx');
+        } else {
+            addLog(`Cannot send [${cmd}]: MQTT client not connected!`, 'err');
+        }
+        // Always update simulator if in Simulation Mode
+        if (isSimulating) {
+            simulateCommand(cmd);
+        }
+    }
+
+    // --- Interactive Simulation / Demo Mode ---
+    let isSimulating = false;
+    let simTimer = null;
+    let simTemp = 25.0;
+    let simState = 0; // 0: IDLE, 1: LEARN, 2: SMART, 3: DONE
+    let simRelay = 0;
+    let simStep = 0;
+
+    function toggleSimulation() {
+        const btn = document.getElementById('btn-toggle-sim');
+        if (isSimulating) {
+            clearInterval(simTimer);
+            isSimulating = false;
+            btn.innerText = 'Start Simulation Mode';
+            btn.style.background = 'rgba(255, 255, 255, 0.05)';
+            addLog('Simulation Mode stopped.');
+        } else {
+            isSimulating = true;
+            btn.innerText = 'Stop Simulation Mode';
+            btn.style.background = '#6366f1';
+            // Start simulation directly into LEARN mode if currently IDLE
+            if (simState === 0) simState = 1;
+            addLog('Simulation Mode started! Simulating DS18B20 heating curve (Target: 105°C)...');
+            
+            simTimer = setInterval(() => {
+                simStep++;
+                const target = (simState === 1 || simState === 2) ? 105.0 : 25.0;
+
+                // Simulate realistic thermal dynamics
+                if (simState === 1 || simState === 2) {
+                    if (simTemp < target) {
+                        simRelay = 1;
+                        // Thermal climb
+                        simTemp += 2.5 + Math.random() * 1.0;
+                        if (simTemp > target) simTemp = target;
+                    } else {
+                        // Stabilized at target temperature with PID micro-adjustments
+                        simRelay = (simStep % 3 === 0) ? 1 : 0;
+                        simTemp = target + (Math.random() - 0.5) * 1.5;
+                    }
+                } else {
+                    simRelay = 0;
+                    if (simTemp > 25.0) simTemp -= 1.5;
+                }
+
+                handleTelemetry({
+                    chamber: parseFloat(Math.max(20, simTemp).toFixed(1)),
+                    state: simState,
+                    setpoint: (simState === 1 || simState === 2) ? 105.0 : 0.0,
+                    relay: simRelay
+                });
+            }, 500);
+        }
+    }
+
+    function simulateCommand(cmd) {
+        if (cmd === 'LEARN') {
+            simState = 1;
+            addLog('[SIM] Machine entered LEARN_MODE (Target: 105°C)', 'sys');
+        } else if (cmd === 'PLAY') {
+            simState = 2;
+            addLog('[SIM] Machine entered SMART_MODE (Replaying Profile)', 'sys');
+        } else if (cmd === 'STOP') {
+            simState = 3;
+            addLog('[SIM] Machine STOPPED -> Transitioning to DONE', 'sys');
+            setTimeout(() => { 
+                simState = 0; 
+                addLog('[SIM] Machine returned to IDLE', 'sys');
+            }, 3000);
+        }
     }
 </script>
 
